@@ -42,16 +42,32 @@ class VisualGridHuntGame:
         self.steps = 0
         self.collision = False
 
-    def get_percept(self) -> dict:
+    def get_percept(self, agent=None) -> dict:
+        """
+        Step 1.1: Partial Observability
+        Returns only local booleans based on current facing direction.
+        """
+        x, y = self.agent_pos
+
+        direction_deltas = {
+            'Up': (0, 1),
+            'Down': (0, -1),
+            'Left': (-1, 0),
+            'Right': (1, 0)
+        }
+        dx, dy = direction_deltas.get(self.facing, (0, 1))
+        ahead = (x + dx, y + dy)
+
+        wall_ahead = (
+            ahead in self.walls or
+            not (0 <= ahead[0] < self.width and 0 <= ahead[1] < self.height)
+        )
+
+        food_here = tuple(self.agent_pos) in self.food_positions
+
         return {
-            'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
-            'collision': self.collision,
-            'score': self.score,
-            'remaining_food': len(self.food_positions),
-            'smells_toxin': tuple(self.agent_pos) in self.toxic_traps
+            'wall_ahead': wall_ahead,
+            'food_here': food_here,
         }
 
     def execute_action(self, action: str):

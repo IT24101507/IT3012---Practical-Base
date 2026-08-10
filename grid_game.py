@@ -1,4 +1,3 @@
-# grid_game.py
 import random
 
 
@@ -9,6 +8,8 @@ class GridHuntGame:
         self.width = width
         self.height = height
         self.agent_pos = [0, 0]  # Starting position (x, y)
+
+        self.facing = 'Up'  # partial observabillity
 
         # Place a few random food pellets and obstacles (walls)
         self.food_positions = {[1, 2], [2, 3], [3, 0], [2, 1]}

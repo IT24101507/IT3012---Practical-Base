@@ -11,6 +11,8 @@ class VisualGridHuntGame:
         self.height = height
         self.agent_pos = [0, 0]  # Starting position (x, y)
 
+        self.facing = 'Up'  # partial observability
+
         if custom_walls is not None:
             self.walls = set(custom_walls)
         else:
@@ -36,7 +38,7 @@ class VisualGridHuntGame:
                 self.opponents.append(op_pos)
 
         # Trap collection attribute
-        self.traps = {(4, 4), (7, 2), (1, 8)}  # Example trap positions
+        self.toxic_traps = {(4, 4), (7, 2), (1, 8)}  # Example trap positions
 
         self.score = 0
         self.steps = 0
@@ -73,6 +75,10 @@ class VisualGridHuntGame:
     def execute_action(self, action: str):
         self.steps += 1
         new_pos = list(self.agent_pos)
+
+          # Update facing to match movement direction
+        if action in ['Up', 'Down', 'Left', 'Right']:
+            self.facing = action
 
         if action == 'Up':
             new_pos[1] = min(self.height - 1, new_pos[1] + 1)

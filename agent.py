@@ -1,5 +1,7 @@
 # agent.py
 import random
+from collections import deque
+import heapq 
 
 
 class GreedyGridAgent:
@@ -81,50 +83,120 @@ class ModelBasedAgent:
 
 class SearchAgent:
     """
-    Practical 3: Problem-Solving Agent using Breadth-First Search (BFS).
-    Finds the optimal (shortest) path in a static maze.
+    Practical 3: Problem-Solving Agent.
+    Implements BFS, DFS, and UCS to find paths to food.
     """
 
-    def bfs_search(self, start_pos, goal_pos, walls, grid_size):
-        """
-        Returns a list of actions ['Up','Down','Left','Right'] or None.
-        """
-        from collections import deque
+    def __init__(self):
+        self.plan = [] 
+        self.active_algo = 'BFS'  #BFS, DFS, UCS
 
-        if start_pos == goal_pos:
-            return []
+    def sense_and_act(self, percept: dict) -> str:
+        """
+        Forms a complete plan and executes it step-by-step.
+        """
+        # Extract global state from percept
+        start_pos = percept.get('agent_pos') 
+        goal_list = percept.get('all_food', [])
+        walls = set(percept.get('walls', []))
+        grid_size = percept.get('grid_size', (10, 10))
 
-        walls_set = set(walls)
+        # 2. Check if self.plan is empty
+        if not self.plan:
+            if not goal_list or not start_pos:
+                return 'Up' # Default if no goals exist
+
+            # 3. Find the closest food pellet (using Manhattan distance)
+            start_node = tuple(start_pos)
+            closest_food = min(goal_list, key=lambda g: abs(g[0]-start_node[0]) + abs(g[1]-start_node[1]))
+            goal_node = tuple(closest_food)
+
+            # Execute the search method matching self.active_algo
+            if self.active_algo == 'BFS':
+                self.plan = self.bfs_search(start_node, goal_node, walls, grid_size)
+            elif self.active_algo == 'DFS':
+                self.plan = self.dfs_search(start_node, goal_node, walls, grid_size)
+            elif self.active_algo == 'UCS':
+                self.plan = self.ucs_search(start_node, goal_node, walls, grid_size)
+
+        # 4. Return the first action from the plan
+        if self.plan:
+            return self.plan.pop(0)
+        
+        return 'Up' # Stay put or move forward if no plan could be made
+
+    def get_neighbors(self, pos, walls, grid_size):
+        """Helper to find valid adjacent tiles."""
+        x, y = pos
         width, height = grid_size
-
-        # Queue holds tuples of (position, path_to_position)
-        queue = deque([(start_pos, [])])
-        visited = {start_pos}
-
-        # Actions mapped to (dx, dy).  y increases upward.
         actions = {
             'Up': (0, 1),
             'Down': (0, -1),
             'Left': (-1, 0),
             'Right': (1, 0)
         }
+        neighbors = []
+        for action, (dx, dy) in actions.items():
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in walls:
+                neighbors.append((action, (nx, ny)))
+        return neighbors
+
+    def bfs_search(self, start_pos, goal_pos, walls, grid_size):
+        """BFS: Explores the shallowest nodes first using a FIFO queue."""
+        if start_pos == goal_pos: return []
+
+        queue = deque([(start_pos, [])])
+        visited = {start_pos}
 
         while queue:
-            (x, y), path = queue.popleft()
+            current_pos, path = queue.popleft() # FIFO
 
-            for action, (dx, dy) in actions.items():
-                nx, ny = x + dx, y + dy
-                next_pos = (nx, ny)
+            for action, next_pos in self.get_neighbors(current_pos, walls, grid_size):
+                if next_pos == goal_pos:
+                    return path + [action]
+                if next_pos not in visited:
+                    visited.add(next_pos)
+                    queue.append((next_pos, path + [action]))
+        return []
 
-                if 0 <= nx < width and 0 <= ny < height:
-                    if next_pos not in walls_set and next_pos not in visited:
-                        new_path = path + [action]
+    def dfs_search(self, start_pos, goal_pos, walls, grid_size):
+        """DFS: Explores the deepest nodes first using a LIFO stack."""
+        if start_pos == goal_pos: return []
 
-                        if next_pos == goal_pos:
-                            return new_path
+        stack = [(start_pos, [])]
+        visited = {start_pos}
 
-                        visited.add(next_pos)
-                        queue.append((next_pos, new_path))
+        while stack:
+            current_pos, path = stack.pop() # LIFO
 
-        # Goal unreachable
-        return None
+            if current_pos == goal_pos:
+                return path
+
+            for action, next_pos in self.get_neighbors(current_pos, walls, grid_size):
+                if next_pos not in visited:
+                    visited.add(next_pos)
+                    stack.append((next_pos, path + [action]))
+        return []
+
+    def ucs_search(self, start_pos, goal_pos, walls, grid_size):
+        """UCS: Explores based on lowest path cost g(n) using a Priority Queue."""
+        # Priority Queue stores: (total_cost, current_pos, path)
+        pq = [(0, start_pos, [])]
+        visited = {} # Stores the cheapest cost found to reach a node
+
+        while pq:
+            cost, current_pos, path = heapq.heappop(pq)
+
+            if current_pos == goal_pos:
+                return path
+
+            # Graph Search check: only proceed if this is a cheaper path
+            if current_pos in visited and visited[current_pos] <= cost:
+                continue
+            visited[current_pos] = cost
+
+            for action, next_pos in self.get_neighbors(current_pos, walls, grid_size):
+                new_cost = cost + 1 # Assuming uniform cost of 1 per move
+                heapq.heappush(pq, (new_cost, next_pos, path + [action]))
+        return []

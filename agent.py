@@ -1,5 +1,6 @@
 # agent.py
 import random
+import math
 from collections import deque
 import heapq 
 
@@ -51,6 +52,8 @@ class ModelBasedAgent:
         self.last_action = None
         self.wall_hits = 0  # Tracks repeated wall encounters
 
+  
+
     def sense_and_act(self, percept: dict) -> str:
         wall_ahead = percept.get('wall_ahead', False)
         food_here = percept.get('food_here', False)
@@ -91,6 +94,20 @@ class SearchAgent:
         self.plan = [] 
         self.active_algo = 'BFS'  #BFS, DFS, UCS
 
+    def manhattan_distance(self, pos, goal):
+        """
+        Calculates the Manhattan Distance heuristic.
+        h(n) = |x1 - x2| + |y1 - y2|
+        Admissible for 4-way grid movement.
+        """
+        return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+    def euclidean_distance(self, pos, goal):
+        """
+        Calculates the Euclidean Distance heuristic.
+        h(n) = sqrt((x1 - x2)^2 + (y1 - y2)^2)
+        """
+        return math.sqrt((pos[0] - goal[0])**2 + (pos[1] - goal[1])**2)
     def sense_and_act(self, percept: dict) -> str:
         """
         Forms a complete plan and executes it step-by-step.
@@ -118,11 +135,13 @@ class SearchAgent:
                 self.plan = self.dfs_search(start_node, goal_node, walls, grid_size)
             elif self.active_algo == 'UCS':
                 self.plan = self.ucs_search(start_node, goal_node, walls, grid_size)
+            elif self.active_algo == 'AStar':
+                self.plan = self.astar_search(start_node, goal_node, walls, grid_size, heuristic_type='manhattan')
 
         # 4. Return the first action from the plan
         if self.plan:
             return self.plan.pop(0)
-        
+
         return 'Up' # Stay put or move forward if no plan could be made
 
     def get_neighbors(self, pos, walls, grid_size):
@@ -200,3 +219,56 @@ class SearchAgent:
                 new_cost = cost + 1 # Assuming uniform cost of 1 per move
                 heapq.heappush(pq, (new_cost, next_pos, path + [action]))
         return []
+
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+        """
+        A* Search: Explores based on f(n) = g(n) + h(n) using a Priority Queue.
+
+        Args:
+            start_pos: Tuple (x, y) of starting position
+            goal_pos: Tuple (x, y) of goal position
+            walls: Set of wall positions
+            grid_size: Tuple (width, height) of the grid
+            heuristic_type: 'manhattan' or 'euclidean'
+
+        Returns:
+            List of actions (strings) representing the optimal path
+        """
+        if start_pos == goal_pos:
+            return []
+
+        # Select heuristic function
+        if heuristic_type == 'euclidean':
+            heuristic = self.euclidean_distance
+        else:
+            heuristic = self.manhattan_distance
+
+        # Priority Queue stores: (f_cost, g_cost, current_pos, path_taken)
+        # f(n) = g(n) + h(n)
+        start_h = heuristic(start_pos, goal_pos)
+        pq = [(start_h, 0, start_pos, [])]
+
+        # reached_states tracks the best g_cost found for each position
+        reached_states = {}
+
+        while pq:
+            f_cost, g_cost, current_pos, path = heapq.heappop(pq)
+
+            # Goal check
+            if current_pos == goal_pos:
+                return path
+
+            # Graph Search: Skip if we've already reached this state with a better or equal cost
+            if current_pos in reached_states and reached_states[current_pos] <= g_cost:
+                continue
+            reached_states[current_pos] = g_cost
+
+            # Expand neighbors
+            for action, next_pos in self.get_neighbors(current_pos, walls, grid_size):
+                new_g = g_cost + 1  # Uniform cost of 1 per move
+                new_h = heuristic(next_pos, goal_pos)
+                new_f = new_g + new_h
+
+                heapq.heappush(pq, (new_f, new_g, next_pos, path + [action]))
+
+        return []  # No path found

@@ -2,6 +2,9 @@
 import random
 import tkinter as tk
 
+# Step 1.3: Import the SearchAgent
+from agent import SearchAgent
+
 
 class VisualGridHuntGame:
     """A flexible Pacman-style grid environment with support for configurable opponents and larger scales."""
@@ -48,6 +51,8 @@ class VisualGridHuntGame:
         """
         Step 1.1: Partial Observability
         Returns only local booleans based on current facing direction.
+
+        NOTE: Also returns global state needed by SearchAgent for path planning.
         """
         x, y = self.agent_pos
 
@@ -70,6 +75,7 @@ class VisualGridHuntGame:
         return {
             'wall_ahead': wall_ahead,
             'food_here': food_here,
+            'agent_pos': list(self.agent_pos),      # <-- ADDED: Required by SearchAgent
             'grid_size': (self.width, self.height),
             'walls': list(self.walls),
             'all_food': list(self.food_positions)
@@ -79,7 +85,7 @@ class VisualGridHuntGame:
         self.steps += 1
         new_pos = list(self.agent_pos)
 
-          # Update facing to match movement direction
+        # Update facing to match movement direction
         if action in ['Up', 'Down', 'Left', 'Right']:
             self.facing = action
 
@@ -118,7 +124,7 @@ class VisualGridHuntGame:
                 self.collision = True
 
         if tuple(self.agent_pos) in self.toxic_traps:
-                self.score -= 15  # Penalty for stepping on a trap
+            self.score -= 15  # Penalty for stepping on a trap
 
     def is_done(self) -> bool:
         return len(self.food_positions) == 0 or self.steps >= 60 or self.collision
@@ -129,10 +135,14 @@ class GridGameGUI:
 
     def __init__(self, root, width=10, height=10, num_food=12, num_opponents=2, walls=None):
         self.root = root
-        self.root.title("IT3012 - Scalable Multi-Agent Grid Hunt")
+        self.root.title("IT3012 - A* Grid Hunt (Informed Search)")
 
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
+
+        # Step 1.3: Inject SearchAgent instead of random/ModelBasedAgent
+        self.agent = SearchAgent()
+        self.agent.active_algo = 'AStar'  # Ensure A* is selected
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -144,7 +154,7 @@ class GridGameGUI:
         self.canvas = tk.Canvas(root, width=canvas_w, height=canvas_h, bg="white")
         self.canvas.pack()
 
-        self.label = tk.Label(root, text="Score: 0 | Steps: 0", font=("Arial", 14))
+        self.label = tk.Label(root, text="Score: 0 | Steps: 0 | Algo: A*", font=("Arial", 14))
         self.label.pack(pady=10)
 
         self.btn = tk.Button(root, text="Start Simulation", command=self.run_loop, font=("Arial", 12), bg="#000066",
@@ -177,8 +187,8 @@ class GridGameGUI:
             y1 = (self.env.height - 1 - fy) * self.cell_size + offset
             self.canvas.create_oval(x1, y1, x1 + self.cell_size * 0.5, y1 + self.cell_size * 0.5, fill="#f59e0b",
                                     outline="#d97706")
-            
-        #2.3: Draw Toxic Traps
+
+        # 2.3: Draw Toxic Traps
         for tx, ty in self.env.toxic_traps:
             offset = self.cell_size * 0.2
             x1 = tx * self.cell_size + offset
@@ -206,11 +216,16 @@ class GridGameGUI:
 
         def step():
             if not self.env.is_done():
-                action = random.choice(['Up', 'Down', 'Left', 'Right'])
+                # Step 1.3: Get percept and let SearchAgent decide the action
+                percept = self.env.get_percept(self.agent)
+                action = self.agent.sense_and_act(percept)
+
                 self.env.execute_action(action)
 
                 self.draw_grid()
-                self.label.config(text=f"Score: {self.env.score} | Steps: {self.env.steps} | Action: {action}")
+                self.label.config(
+                    text=f"Score: {self.env.score} | Steps: {self.env.steps} | Action: {action} | Algo: {self.agent.active_algo}"
+                )
                 self.root.after(250, step)
             else:
                 end_text = f"Collision! Game Over! Final Score: {self.env.score}" if self.env.collision else f"Finished! Final Score: {self.env.score}"
@@ -222,6 +237,6 @@ class GridGameGUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # Try a larger grid size like 12x12 with 15 food and 3 opponents!
+    # Try a larger grid size like 12x12 with 15 food and 0 opponents for clean A* observation!
     app = GridGameGUI(root, width=12, height=12, num_food=15, num_opponents=0)
     root.mainloop()

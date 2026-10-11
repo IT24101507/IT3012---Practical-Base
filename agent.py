@@ -3,6 +3,7 @@ import random
 import math
 from collections import deque
 import heapq 
+from logic_engine import KnowledgeBase
 
 
 class GreedyGridAgent:
@@ -94,6 +95,11 @@ class SearchAgent:
         self.plan = [] 
         self.active_algo = 'BFS'  #BFS, DFS, UCS
 
+        # Practical 7: Knowledge Base with safety rules (Horn clauses)
+        self.kb = KnowledgeBase()
+        self.kb.tell_rule(['TargetVisible', 'HasDust'], 'SafeToEngage')
+        self.kb.tell_rule(['SafeToEngage', 'BloodseekerMissing'], 'Retreat')
+
     def manhattan_distance(self, pos, goal):
         """
         Calculates the Manhattan Distance heuristic.
@@ -136,7 +142,13 @@ class SearchAgent:
             elif self.active_algo == 'UCS':
                 self.plan = self.ucs_search(start_node, goal_node, walls, grid_size)
             elif self.active_algo == 'AStar':
-                self.plan = self.astar_search(start_node, goal_node, walls, grid_size, heuristic_type='manhattan')
+                # Per-tile facts supplied by us (the game does not produce them)
+                tile_facts = {
+                    (1, 0): ['TargetVisible', 'HasDust', 'BloodseekerMissing'],  # deduces Retreat -> infeasible
+                    (0, 1): ['TargetVisible', 'HasDust'],                        # SafeToEngage only -> feasible
+                }
+                self.plan = self.astar_search(start_node, goal_node, walls, grid_size,
+                                              heuristic_type='manhattan', tile_facts=tile_facts)
 
         # 4. Return the first action from the plan
         if self.plan:
@@ -220,7 +232,7 @@ class SearchAgent:
                 heapq.heappush(pq, (new_cost, next_pos, path + [action]))
         return []
 
-    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan', tile_facts=None):
         """
         A* Search: Explores based on f(n) = g(n) + h(n) using a Priority Queue.
 
@@ -230,10 +242,14 @@ class SearchAgent:
             walls: Set of wall positions
             grid_size: Tuple (width, height) of the grid
             heuristic_type: 'manhattan' or 'euclidean'
+            tile_facts: dict {(x, y): [facts]}; tiles where 'Retreat' is deduced are skipped
 
         Returns:
             List of actions (strings) representing the optimal path
         """
+        if tile_facts is None:
+            tile_facts = {}
+
         if start_pos == goal_pos:
             return []
 
@@ -265,6 +281,14 @@ class SearchAgent:
 
             # Expand neighbors
             for action, next_pos in self.get_neighbors(current_pos, walls, grid_size):
+                # Feasibility check (logic): reachable != feasible
+                self.kb.clear_facts()
+                for fact in tile_facts.get(next_pos, []):
+                    self.kb.tell_fact(fact)
+                self.kb.forward_chain()
+                if 'Retreat' in self.kb.facts:
+                    continue  # Infeasible tile: never enter
+
                 new_g = g_cost + 1  # Uniform cost of 1 per move
                 new_h = heuristic(next_pos, goal_pos)
                 new_f = new_g + new_h
